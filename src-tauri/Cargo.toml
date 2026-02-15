@@ -1,0 +1,40 @@
+[package]
+name = "quicksales-desktop"
+version = "1.0.0"
+description = "QuickSales 订单管理系统"
+authors = ["QuickSales Team"]
+edition = "2021"
+
+[lib]
+name = "quicksales_desktop_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 数据库
+rusqlite = { version = "0.32", features = ["bundled"] }
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+# 时间处理
+chrono = "0.4"
+# 错误处理
+anyhow = "1"
+# UUID生成
+uuid = { version = "1", features = ["v4", "serde"] }
+# 拼音转换
+pinyin = "0.11"
+# Excel处理（通过前端实现，这里不需要）
+# 文件操作
+dirs = "5"
+# 正则表达式
+regex = "1"
