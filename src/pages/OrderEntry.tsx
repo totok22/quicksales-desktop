@@ -125,7 +125,7 @@ export const OrderEntry: React.FC = () => {
   // 统一的客户字段更新函数
   const updateCustomerField = useCallback((field: string, value: string) => {
     const currentCustomer = draftOrder.customer || {
-      id: `temp_${Date.now()}`,
+      id: Date.now().toString(),
       name: '',
       phone: '',
       licensePlate: '',

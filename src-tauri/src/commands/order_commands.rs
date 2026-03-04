@@ -4,6 +4,11 @@ use crate::database::schema::{OrderRepository, CustomerRepository, ProductReposi
 use crate::models::{Order, TemplateConfig, AppSettings};
 use chrono::Utc;
 
+fn is_order_number_unique_violation(err: &rusqlite::Error) -> bool {
+    err.to_string()
+        .contains("UNIQUE constraint failed: orders.order_number")
+}
+
 #[tauri::command]
 pub async fn get_all_orders(
     conn: State<'_, DbConnection>,
@@ -70,7 +75,8 @@ pub async fn save_order(
         });
 
     // 只有在订单号为空时才生成
-    let order_number = if order.order_number.is_empty() {
+    let auto_generated_order_number = order.order_number.is_empty();
+    let mut order_number = if auto_generated_order_number {
         let generated = order_repo.generate_order_number(&settings, &order.date)
             .map_err(|e| e.to_string())?;
         order.order_number = generated.clone();
@@ -103,9 +109,46 @@ pub async fn save_order(
     // 检查订单是否已存在来决定是插入还是更新
     let existing = order_repo.get_by_id(&order.id);
     if existing.is_ok() {
-        order_repo.update(&order).map_err(|e| e.to_string())?;
+        order_repo.update(&order).map_err(|e| {
+            if is_order_number_unique_violation(&e) {
+                "订单号已存在，请修改后重试".to_string()
+            } else {
+                e.to_string()
+            }
+        })?;
     } else {
-        order_repo.insert(&order).map_err(|e| e.to_string())?;
+        if auto_generated_order_number {
+            const MAX_ORDER_NUMBER_RETRIES: usize = 5;
+            let mut retry_count = 0usize;
+
+            loop {
+                order.order_number = order_number.clone();
+
+                match order_repo.insert(&order) {
+                    Ok(()) => break,
+                    Err(e) if is_order_number_unique_violation(&e) && retry_count + 1 < MAX_ORDER_NUMBER_RETRIES => {
+                        retry_count += 1;
+                        order_number = order_repo
+                            .generate_order_number(&settings, &order.date)
+                            .map_err(|gen_err| gen_err.to_string())?;
+                    }
+                    Err(e) => {
+                        if is_order_number_unique_violation(&e) {
+                            return Err("订单号冲突，请重试保存".to_string());
+                        }
+                        return Err(e.to_string());
+                    }
+                }
+            }
+        } else {
+            order_repo.insert(&order).map_err(|e| {
+                if is_order_number_unique_violation(&e) {
+                    "订单号已存在，请修改后重试".to_string()
+                } else {
+                    e.to_string()
+                }
+            })?;
+        }
     }
 
     // 扣减库存（仅在新建订单时扣减，如果是更新，逻辑可能更复杂，暂保持原样或调整）

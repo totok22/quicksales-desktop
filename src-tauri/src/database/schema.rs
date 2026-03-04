@@ -4,7 +4,7 @@ use crate::models::{
     TemplateConfig, TemplateMappings, UnitPreset,
 };
 
-use chrono::Utc;
+use chrono::{NaiveDate, Utc};
 use rusqlite::{params, Result};
 use serde_json;
 
@@ -877,21 +877,22 @@ impl OrderRepository {
     pub fn generate_order_number(
         &self,
         settings: &AppSettings,
-        _order_date: &str,
+        order_date: &str,
     ) -> Result<String> {
         let conn = self.conn.lock().unwrap();
-        let now = Utc::now();
+        let effective_date =
+            NaiveDate::parse_from_str(order_date, "%Y-%m-%d").unwrap_or_else(|_| Utc::now().date_naive());
 
         let format = &settings.order_number_format;
 
-        // 第一步：替换日期变量（使用当前日期）
+        // 第一步：替换日期变量（优先使用订单日期，解析失败时回退到当前日期）
         let mut result = format.clone();
-        result = result.replace("{YYYY}", &now.format("%Y").to_string());
-        result = result.replace("{YY}", &now.format("%y").to_string());
-        result = result.replace("{MM}", &now.format("%m").to_string());
-        result = result.replace("{DD}", &now.format("%d").to_string());
-        result = result.replace("{M}", &now.format("%-m").to_string());
-        result = result.replace("{D}", &now.format("%-d").to_string());
+        result = result.replace("{YYYY}", &effective_date.format("%Y").to_string());
+        result = result.replace("{YY}", &effective_date.format("%y").to_string());
+        result = result.replace("{MM}", &effective_date.format("%m").to_string());
+        result = result.replace("{DD}", &effective_date.format("%d").to_string());
+        result = result.replace("{M}", &effective_date.format("%-m").to_string());
+        result = result.replace("{D}", &effective_date.format("%-d").to_string());
 
         // 第二步：处理序号 {SEQ} 或 {SEQ:N}
         let seq_re = regex::Regex::new(r"\{SEQ(?::(\d+))?\}").unwrap();
@@ -903,13 +904,13 @@ impl OrderRepository {
                 .and_then(|m| m.as_str().parse::<usize>().ok())
                 .unwrap_or(settings.order_number_digits as usize);
 
-            // 第三步：查询最后的订单号（使用当前日期）
-            let today = now.format("%Y-%m-%d").to_string();
+            // 第三步：查询最后的订单号（按订单日期维度）
+            let date_key = effective_date.format("%Y-%m-%d").to_string();
             let last_number: Option<String> = if settings.order_number_reset_daily {
-                // 每日重置：查询今天的最后订单号
+                // 每日重置：查询同订单日期的最后订单号
                 conn.query_row(
                     "SELECT order_number FROM orders WHERE date = ?1 ORDER BY created_at DESC LIMIT 1",
-                    params![today],
+                    params![date_key],
                     |row: &rusqlite::Row| row.get::<_, String>(0),
                 ).ok()
             } else {

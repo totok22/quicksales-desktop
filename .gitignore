@@ -6,13 +6,17 @@ dist/
 build/
 
 # Tauri
-src-tauri/target/
-.src-tauri.gen/
+# 不要忽略整个 src-tauri/，这里只忽略构建和生成产物
+src-tauri/target*/
+src-tauri/gen/
+src-tauri/tmp-*/
+src-tauri/icons/
 
 # IDE
 .vscode/
 .idea/
 *.code-workspace
+.kilocode/
 
 # OS
 .DS_Store
